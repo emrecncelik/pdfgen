@@ -12,6 +12,10 @@ from reportlab.platypus import Paragraph
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
 
+# For PDF to image conversion (deployment-friendly preview)
+from pdf2image import convert_from_bytes
+from PIL import Image
+
 st.set_page_config(page_title="Certificate Generator", layout="wide")
 st.title("Certificate Generator")
 
@@ -39,12 +43,29 @@ with st.sidebar:
     desc_max_width = st.number_input("Description Max Width", value=550, step=10)
 
 
-# Function to display PDF
+# Function to display PDF (image-based for deployment compatibility)
 def display_pdf(pdf_bytes):
-    """Display the PDF in the Streamlit app using an iframe."""
-    base64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
-    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
-    st.markdown(pdf_display, unsafe_allow_html=True)
+    """Display the PDF as an image for better compatibility with Streamlit deployment."""
+    try:
+        # Try to convert the first page of the PDF to an image
+        images = convert_from_bytes(pdf_bytes, first_page=1, last_page=1)
+        if images:
+            st.image(images[0], caption="Certificate Preview", use_column_width=True)
+            return True
+    except Exception as e:
+        st.warning(
+            f"Could not generate preview image. Using download option instead. Error: {str(e)}"
+        )
+        return False
+
+    # Fallback: Try iframe method (works locally but may not work in deployment)
+    try:
+        base64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
+        pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
+        st.markdown(pdf_display, unsafe_allow_html=True)
+        return True
+    except:
+        return False
 
 
 # Functions for certificate generation
@@ -216,7 +237,15 @@ if st.button("Preview Certificate"):
 
                     # Display the PDF preview
                     st.success(f"Preview certificate for: {names[0]}")
-                    display_pdf(preview_pdf.getvalue())
+                    preview_success = display_pdf(preview_pdf.getvalue())
+
+                    # Always provide a download option
+                    st.download_button(
+                        label="Download Preview",
+                        data=preview_pdf,
+                        file_name=f"preview_{names[0].replace(' ', '_')}.pdf",
+                        mime="application/pdf",
+                    )
             else:
                 st.error("No valid names found. Please enter at least one name.")
 
@@ -322,9 +351,16 @@ with st.expander("Requirements"):
     streamlit
     reportlab
     PyPDF2
+    pdf2image
+    pillow
+    poppler-utils  # System dependency for pdf2image
     ```
     
-    Install with: `pip install streamlit reportlab PyPDF2`
+    Install Python packages with: 
+    `pip install streamlit reportlab PyPDF2 pdf2image pillow`
+    
+    On Ubuntu/Debian systems, install poppler-utils with:
+    `apt-get install -y poppler-utils`
     
     Run with: `streamlit run app.py`
     """
