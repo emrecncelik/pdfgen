@@ -3,6 +3,7 @@ import io
 import os
 import tempfile
 import zipfile
+import pandas as pd
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -49,15 +50,7 @@ with st.form("certificate_form"):
 
     with col2:
         st.subheader("Names & Content")
-        names_input_option = st.radio(
-            "Names Input Method", ["Text Input", "Text File Upload"]
-        )
-
-        if names_input_option == "Text Input":
-            names_text = st.text_area("Enter names (one per line)")
-        else:
-            names_file = st.file_uploader("Upload Names Text File", type=["txt"])
-
+        names_text = st.text_area("Enter names (one per line)")
         date_text = st.text_input("Certificate Date", "14 April 2025")
 
     st.subheader("Certificate Description")
@@ -89,13 +82,7 @@ def register_uploaded_font(font_file, font_name):
 
 # Function to read names from input
 def get_names():
-    if names_input_option == "Text Input":
-        return [name.strip() for name in names_text.splitlines() if name.strip()]
-    else:
-        if names_file is not None:
-            content = names_file.getvalue().decode("utf-8")
-            return [name.strip() for name in content.splitlines() if name.strip()]
-        return []
+    return [name.strip() for name in names_text.splitlines() if name.strip()]
 
 
 def read_template(template_file):
@@ -288,6 +275,7 @@ with st.expander("Requirements"):
     streamlit
     reportlab
     PyPDF2
+    pandas
     ```
     
     Install with: `pip install streamlit reportlab PyPDF2 pandas`
