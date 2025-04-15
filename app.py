@@ -4,6 +4,7 @@ import os
 import tempfile
 import zipfile
 import base64
+import uuid
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -18,6 +19,16 @@ from PIL import Image
 
 st.set_page_config(page_title="Certificate Generator", layout="wide")
 st.title("Certificate Generator")
+
+# Initialize session state for font tracking
+if "name_font_id" not in st.session_state:
+    st.session_state.name_font_id = None
+if "text_font_id" not in st.session_state:
+    st.session_state.text_font_id = None
+if "name_font_file_hash" not in st.session_state:
+    st.session_state.name_font_file_hash = None
+if "text_font_file_hash" not in st.session_state:
+    st.session_state.text_font_file_hash = None
 
 # Sidebar for configuration
 with st.sidebar:
@@ -68,11 +79,38 @@ def display_pdf(pdf_bytes):
         return False
 
 
+# Helper function to get file hash for checking if it's changed
+def get_file_hash(file):
+    if file is None:
+        return None
+    return hash(file.getvalue())
+
+
 # Functions for certificate generation
-def register_uploaded_font(font_file, font_name):
-    """Register uploaded font and return success status."""
+def register_uploaded_font(font_file, font_type="name"):
+    """Register uploaded font with a unique identifier and return font name."""
     if font_file is None:
-        return False
+        return "Helvetica"
+
+    # Calculate hash to detect changes
+    file_hash = get_file_hash(font_file)
+
+    # Check if the font has changed
+    if font_type == "name":
+        if file_hash == st.session_state.name_font_file_hash:
+            return (
+                st.session_state.name_font_id
+            )  # Return existing font id if not changed
+        st.session_state.name_font_file_hash = file_hash
+    else:  # text font
+        if file_hash == st.session_state.text_font_file_hash:
+            return (
+                st.session_state.text_font_id
+            )  # Return existing font id if not changed
+        st.session_state.text_font_file_hash = file_hash
+
+    # Create a unique font identifier
+    font_id = f"{font_type}_font_{uuid.uuid4().hex[:8]}"
 
     # Create a temporary file
     temp_dir = tempfile.mkdtemp()
@@ -82,9 +120,16 @@ def register_uploaded_font(font_file, font_name):
     with open(temp_path, "wb") as f:
         f.write(font_file.getvalue())
 
-    # Register the font
-    pdfmetrics.registerFont(TTFont(font_name, temp_path))
-    return True
+    # Register the font with the unique identifier
+    pdfmetrics.registerFont(TTFont(font_id, temp_path))
+
+    # Update session state with new font ID
+    if font_type == "name":
+        st.session_state.name_font_id = font_id
+    else:
+        st.session_state.text_font_id = font_id
+
+    return font_id
 
 
 def get_names():
@@ -206,21 +251,9 @@ if st.button("Preview Certificate"):
         st.error("Please enter at least one name.")
     else:
         with preview_container:
-            # Register fonts
-            name_font_registered = register_uploaded_font(name_font_file, "NameFont")
-            text_font_registered = register_uploaded_font(text_font_file, "TextFont")
-
-            if not name_font_registered:
-                st.warning("Name font not uploaded. Using default font.")
-                name_font = "Helvetica"
-            else:
-                name_font = "NameFont"
-
-            if not text_font_registered:
-                st.warning("Text font not uploaded. Using default font.")
-                text_font = "Helvetica"
-            else:
-                text_font = "TextFont"
+            # Register fonts with unique identifiers
+            name_font = register_uploaded_font(name_font_file, "name")
+            text_font = register_uploaded_font(text_font_file, "text")
 
             # Get the first name for preview
             names = get_names()
@@ -255,21 +288,9 @@ if submit_button:
     if template_file is None:
         st.error("Please upload a PDF template file.")
     else:
-        # Register fonts
-        name_font_registered = register_uploaded_font(name_font_file, "NameFont")
-        text_font_registered = register_uploaded_font(text_font_file, "TextFont")
-
-        if not name_font_registered:
-            st.warning("Name font not uploaded. Using default font.")
-            name_font = "Helvetica"
-        else:
-            name_font = "NameFont"
-
-        if not text_font_registered:
-            st.warning("Text font not uploaded. Using default font.")
-            text_font = "Helvetica"
-        else:
-            text_font = "TextFont"
+        # Register fonts with unique identifiers
+        name_font = register_uploaded_font(name_font_file, "name")
+        text_font = register_uploaded_font(text_font_file, "text")
 
         # Get names
         names = get_names()
@@ -361,6 +382,11 @@ with st.expander("Requirements"):
     
     On Ubuntu/Debian systems, install poppler-utils with:
     `apt-get install -y poppler-utils`
+    
+    For Streamlit Cloud deployment, create a packages.txt file with:
+    ```
+    poppler-utils
+    ```
     
     Run with: `streamlit run app.py`
     """
