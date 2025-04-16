@@ -29,12 +29,61 @@ if "name_font_file_hash" not in st.session_state:
     st.session_state.name_font_file_hash = None
 if "text_font_file_hash" not in st.session_state:
     st.session_state.text_font_file_hash = None
+if "template_dimensions" not in st.session_state:
+    st.session_state.template_dimensions = (841.89, 595.276)  # Default A4 landscape
+
+
+# Function to detect PDF dimensions
+def detect_pdf_dimensions(pdf_file):
+    """Detect the width and height of the uploaded PDF template."""
+    if pdf_file is None:
+        return st.session_state.template_dimensions  # Return default dimensions
+
+    try:
+        pdf = PdfReader(io.BytesIO(pdf_file.getvalue()))
+        if len(pdf.pages) > 0:
+            # Get the first page
+            page = pdf.pages[0]
+            # Extract media box dimensions (in points)
+            media_box = page.mediabox
+            width = float(media_box.width)
+            height = float(media_box.height)
+            # Store in session state
+            st.session_state.template_dimensions = (width, height)
+            return width, height
+    except Exception as e:
+        st.warning(f"Could not detect PDF dimensions: {e}")
+
+    return st.session_state.template_dimensions
+
+
+# Main form for inputs at the top
+template_col1, template_col2 = st.columns(2)
+
+with template_col1:
+    template_file = st.file_uploader("Upload PDF Template", type=["pdf"])
+
+    # Detect dimensions when template is uploaded
+    if template_file:
+        pdf_width, pdf_height = detect_pdf_dimensions(template_file)
+        st.success(
+            f"Template dimensions detected: {pdf_width:.2f} × {pdf_height:.2f} points"
+        )
 
 # Sidebar for configuration
 with st.sidebar:
     st.header("PDF Settings")
-    page_width = st.number_input("Page Width", value=841.89, step=10.0)
-    page_height = st.number_input("Page Height", value=595.276, step=10.0)
+
+    # Use detected dimensions from session state
+    pdf_width, pdf_height = st.session_state.template_dimensions
+
+    page_width = st.number_input("Page Width", value=pdf_width, step=10.0)
+    page_height = st.number_input("Page Height", value=pdf_height, step=10.0)
+
+    # Button to reset dimensions to detected values
+    if st.button("Reset to Detected Dimensions"):
+        page_width = pdf_width
+        page_height = pdf_height
 
     st.header("Coordinates & Font Sizes")
     col1, col2 = st.columns(2)
@@ -216,26 +265,26 @@ def process_certificate(template_pdf, name, description, date, name_font, text_f
     return output
 
 
+# Continue with the rest of the form
+with template_col2:
+    name_font_file = st.file_uploader("Upload Name Font (TTF)", type=["ttf"])
+    text_font_file = st.file_uploader("Upload Text Font (TTF)", type=["ttf"])
+
 # Main form for inputs
 with st.form("certificate_form"):
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Template & Fonts")
-        template_file = st.file_uploader("Upload PDF Template", type=["pdf"])
-        name_font_file = st.file_uploader("Upload Name Font (TTF)", type=["ttf"])
-        text_font_file = st.file_uploader("Upload Text Font (TTF)", type=["ttf"])
-
-    with col2:
         st.subheader("Names & Content")
         names_text = st.text_area("Enter names (one per line)")
         date_text = st.text_input("Certificate Date", "14 April 2025")
 
-    st.subheader("Certificate Description")
-    description_text = st.text_area(
-        "Enter description text",
-        "This certificate is presented to recognize the successful completion of the program.",
-    )
+    with col2:
+        st.subheader("Certificate Description")
+        description_text = st.text_area(
+            "Enter description text",
+            "This certificate is presented to recognize the successful completion of the program.",
+        )
 
     submit_button = st.form_submit_button("Generate Certificates")
 
