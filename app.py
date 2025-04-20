@@ -362,7 +362,7 @@ if submit_button:
                         )
 
                         # Add the certificate to the zip file
-                        filename = f"certificate_{name.replace(' ', '_')}.pdf"
+                        filename = f"{name.replace(' ', '_')}_katilimbelgesi.pdf"
                         zip_file.writestr(filename, pdf_bytes.getvalue())
 
                     # Add a preview for the first certificate
