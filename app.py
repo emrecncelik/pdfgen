@@ -5,13 +5,16 @@ import tempfile
 import zipfile
 import base64
 import uuid
+
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from PyPDF2 import PdfReader, PdfWriter
 from reportlab.platypus import Paragraph
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
+from reportlab.lib import colors
+
+from PyPDF2 import PdfReader, PdfWriter
 
 # For PDF to image conversion (deployment-friendly preview)
 from pdf2image import convert_from_bytes
@@ -102,6 +105,11 @@ with st.sidebar:
 
     desc_max_width = st.number_input("Description Max Width", value=550, step=10)
 
+    st.header("Font Colors")
+    name_color = st.color_picker("Name Color", "#000000")
+    desc_color = st.color_picker("Description Color", "#000000")
+    date_color = st.color_picker("Date Color", "#000000")
+
 
 # Function to display PDF (image-based for deployment compatibility)
 def display_pdf(pdf_bytes):
@@ -124,7 +132,7 @@ def display_pdf(pdf_bytes):
         pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
         st.markdown(pdf_display, unsafe_allow_html=True)
         return True
-    except:
+    except Exception:
         return False
 
 
@@ -147,15 +155,11 @@ def register_uploaded_font(font_file, font_type="name"):
     # Check if the font has changed
     if font_type == "name":
         if file_hash == st.session_state.name_font_file_hash:
-            return (
-                st.session_state.name_font_id
-            )  # Return existing font id if not changed
+            return st.session_state.name_font_id
         st.session_state.name_font_file_hash = file_hash
     else:  # text font
         if file_hash == st.session_state.text_font_file_hash:
-            return (
-                st.session_state.text_font_id
-            )  # Return existing font id if not changed
+            return st.session_state.text_font_id
         st.session_state.text_font_file_hash = file_hash
 
     # Create a unique font identifier
@@ -181,18 +185,21 @@ def register_uploaded_font(font_file, font_type="name"):
     return font_id
 
 
-def get_names():
+def get_names(names_text: str):
     """Extract names from the text input."""
-    return [name.strip() for name in names_text.splitlines() if name.strip()]
+    return [name.strip() for name in (names_text or "").splitlines() if name.strip()]
 
 
-def add_name(c, name, coord, font_name, font_size):
+def add_name(c, name, coord, font_name, font_size, color_hex="#000000"):
     """Add the name centered at the specified coordinate on the canvas."""
+    c.setFillColor(colors.HexColor(color_hex))
     c.setFont(font_name, font_size)
     c.drawCentredString(coord[0], coord[1], name)
 
 
-def add_description(c, description, coord, font_name, font_size, max_width=550):
+def add_description(
+    c, description, coord, font_name, font_size, max_width=550, color_hex="#000000"
+):
     """Add a centered, wrapped paragraph to the canvas using Platypus."""
     style = ParagraphStyle(
         name="Center",
@@ -200,6 +207,7 @@ def add_description(c, description, coord, font_name, font_size, max_width=550):
         fontSize=font_size,
         alignment=TA_CENTER,
         leading=font_size * 1.3,
+        textColor=colors.HexColor(color_hex),
     )
 
     para = Paragraph(description, style)
@@ -209,8 +217,9 @@ def add_description(c, description, coord, font_name, font_size, max_width=550):
     para.drawOn(c, x, y)
 
 
-def add_date(c, date_str, coord, font_name, font_size):
+def add_date(c, date_str, coord, font_name, font_size, color_hex="#000000"):
     """Add the date centered at the specified coordinate."""
+    c.setFillColor(colors.HexColor(color_hex))
     c.setFont(font_name, font_size)
     c.drawCentredString(coord[0], coord[1], date_str)
 
@@ -221,8 +230,32 @@ def merge_overlay(template_page, overlay_page):
     return template_page
 
 
-def process_certificate(template_pdf, name, description, date, name_font, text_font):
+def process_certificate(
+    template_pdf,
+    name,
+    description,
+    date,
+    name_font,
+    text_font,
+    name_color,
+    desc_color,
+    date_color,
+    template_file,
+    page_width,
+    page_height,
+    name_x,
+    name_y,
+    desc_x,
+    desc_y,
+    date_x,
+    date_y,
+    name_font_size,
+    desc_font_size,
+    date_font_size,
+    desc_max_width,
+):
     """Process a single certificate and return the PDF bytes."""
+
     # Create a fresh reader copy for each certificate to avoid overlapping content
     template_pdf_copy = PdfReader(io.BytesIO(template_file.getvalue()))
     template_page = template_pdf_copy.pages[0]
@@ -232,7 +265,9 @@ def process_certificate(template_pdf, name, description, date, name_font, text_f
     overlay_canvas = canvas.Canvas(packet, pagesize=(page_width, page_height))
 
     # Add components to the overlay
-    add_name(overlay_canvas, name, (name_x, name_y), name_font, name_font_size)
+    add_name(
+        overlay_canvas, name, (name_x, name_y), name_font, name_font_size, name_color
+    )
     add_description(
         overlay_canvas,
         description,
@@ -240,8 +275,11 @@ def process_certificate(template_pdf, name, description, date, name_font, text_f
         text_font,
         desc_font_size,
         desc_max_width,
+        desc_color,
     )
-    add_date(overlay_canvas, date, (date_x, date_y), text_font, date_font_size)
+    add_date(
+        overlay_canvas, date, (date_x, date_y), text_font, date_font_size, date_color
+    )
 
     # Finalize the canvas
     overlay_canvas.showPage()
@@ -296,7 +334,7 @@ preview_container = st.container()
 if st.button("Preview Certificate"):
     if template_file is None:
         st.error("Please upload a PDF template file.")
-    elif not names_text.strip():
+    elif not (names_text or "").strip():
         st.error("Please enter at least one name.")
     else:
         with preview_container:
@@ -305,7 +343,7 @@ if st.button("Preview Certificate"):
             text_font = register_uploaded_font(text_font_file, "text")
 
             # Get the first name for preview
-            names = get_names()
+            names = get_names(names_text)
             if names:
                 with st.spinner("Generating preview..."):
                     preview_pdf = process_certificate(
@@ -315,11 +353,27 @@ if st.button("Preview Certificate"):
                         date_text,
                         name_font,
                         text_font,
+                        name_color,
+                        desc_color,
+                        date_color,
+                        template_file,
+                        page_width,
+                        page_height,
+                        name_x,
+                        name_y,
+                        desc_x,
+                        desc_y,
+                        date_x,
+                        date_y,
+                        name_font_size,
+                        desc_font_size,
+                        date_font_size,
+                        desc_max_width,
                     )
 
                     # Display the PDF preview
                     st.success(f"Preview certificate for: {names[0]}")
-                    preview_success = display_pdf(preview_pdf.getvalue())
+                    display_pdf(preview_pdf.getvalue())
 
                     # Always provide a download option
                     st.download_button(
@@ -342,7 +396,7 @@ if submit_button:
         text_font = register_uploaded_font(text_font_file, "text")
 
         # Get names
-        names = get_names()
+        names = get_names(names_text)
         if not names:
             st.error("No names provided. Please enter at least one name.")
         else:
@@ -353,12 +407,28 @@ if submit_button:
                     for name in names:
                         # Process the certificate
                         pdf_bytes = process_certificate(
-                            None,  # Not used anymore as we create a fresh copy inside function
+                            None,
                             name,
                             description_text,
                             date_text,
                             name_font,
                             text_font,
+                            name_color,
+                            desc_color,
+                            date_color,
+                            template_file,
+                            page_width,
+                            page_height,
+                            name_x,
+                            name_y,
+                            desc_x,
+                            desc_y,
+                            date_x,
+                            date_y,
+                            name_font_size,
+                            desc_font_size,
+                            date_font_size,
+                            desc_max_width,
                         )
 
                         # Add the certificate to the zip file
@@ -374,6 +444,22 @@ if submit_button:
                             date_text,
                             name_font,
                             text_font,
+                            name_color,
+                            desc_color,
+                            date_color,
+                            template_file,
+                            page_width,
+                            page_height,
+                            name_x,
+                            name_y,
+                            desc_x,
+                            desc_y,
+                            date_x,
+                            date_y,
+                            name_font_size,
+                            desc_font_size,
+                            date_font_size,
+                            desc_max_width,
                         )
                         zip_file.writestr("preview.pdf", preview_pdf.getvalue())
 
@@ -407,7 +493,7 @@ with st.expander("How to Use"):
     4. **Configure settings** - Adjust coordinates and font sizes as needed
     5. **Preview** - Click "Preview Certificate" to see how it will look
     6. **Generate certificates** - Create PDFs for all names
-    
+
     All certificates will be provided in a single ZIP file for download.
     """
     )
@@ -425,18 +511,18 @@ with st.expander("Requirements"):
     pillow
     poppler-utils  # System dependency for pdf2image
     ```
-    
-    Install Python packages with: 
+
+    Install Python packages with:
     `pip install streamlit reportlab PyPDF2 pdf2image pillow`
-    
+
     On Ubuntu/Debian systems, install poppler-utils with:
     `apt-get install -y poppler-utils`
-    
+
     For Streamlit Cloud deployment, create a packages.txt file with:
     ```
     poppler-utils
     ```
-    
+
     Run with: `streamlit run app.py`
     """
     )
